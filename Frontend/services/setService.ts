@@ -12,12 +12,29 @@ export const getAllSets = () => api.get("/set");
 export const getSetById = (id: string) => api.get(`/set/${id}`);
 
 /** Tạo bộ thẻ mới */
-export const createSet = (data: { title: string; description?: string; cards: { front: string; back: string }[] }) =>
-  api.post("/set", data);
+export const createSet = (data: {
+  title: string;
+  description?: string;
+  tags?: string[];
+  category?: string;
+  studyMode?: string;
+  isPublic?: boolean;
+  cards: { front: string; back: string }[];
+}) => api.post("/set", data);
 
 /** Cập nhật thông tin bộ thẻ */
-export const updateSet = (id: string, data: { title?: string; description?: string; cards?: { front: string; back: string }[] }) => 
-  api.put(`/set/${id}`, data);
+export const updateSet = (
+  id: string,
+  data: {
+    title?: string;
+    description?: string;
+    tags?: string[];
+    category?: string;
+    studyMode?: string;
+    isPublic?: boolean;
+    cards?: { front: string; back: string }[];
+  }
+) => api.put(`/set/${id}`, data);
 
 /** Xóa bộ thẻ */
 export const deleteSet = (id: string) => api.delete(`/set/${id}`);

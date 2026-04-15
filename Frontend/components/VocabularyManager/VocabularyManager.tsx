@@ -2,14 +2,16 @@
 
 import { useState, useEffect, useRef, type ChangeEvent } from "react";
 import { Card, Input, Button, Modal, Form, Select, Tag, message, Space, Typography, Spin, Empty } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, UploadOutlined, DownloadOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, UploadOutlined, DownloadOutlined, SoundOutlined } from "@ant-design/icons";
 import { useAuth } from "../../hooks/AuthContext";
+import { getSetById, getSetsByUser, updateSet } from "../../services/setService";
 
 const { Title } = Typography;
 const { Option } = Select;
 
 interface VocabularyWord {
-  _id: string;
+  id: string;
+  _id?: string;
   word: string;
   phonetic?: string;
   definitions: Array<{
@@ -30,6 +32,12 @@ interface VocabularyWord {
   }>;
   difficulty: string;
   tags: string[];
+  audioUrl?: string;
+  createdBy?: {
+    id?: string;
+    _id?: string;
+    name?: string;
+  };
 }
 
 interface VocabularyFormValues {
@@ -45,7 +53,7 @@ interface VocabularyFormValues {
 }
 
 export default function VocabularyManager() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [vocabulary, setVocabulary] = useState<VocabularyWord[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -53,6 +61,11 @@ export default function VocabularyManager() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingWord, setEditingWord] = useState<VocabularyWord | null>(null);
+  const [addToSetModalVisible, setAddToSetModalVisible] = useState(false);
+  const [availableSets, setAvailableSets] = useState<Array<{ id: string; title: string; owner?: { id?: string; _id?: string } }>>([]);
+  const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
+  const [addingWord, setAddingWord] = useState<VocabularyWord | null>(null);
+  const [setActionLoading, setSetActionLoading] = useState(false);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -110,6 +123,11 @@ export default function VocabularyManager() {
   };
 
   const handleDeleteWord = async (wordId: string) => {
+    if (!token) {
+      message.error('Bạn cần đăng nhập để xóa từ');
+      return;
+    }
+
     try {
       const response = await fetch(`http://localhost:5000/api/vocabulary/${wordId}`, {
         method: 'DELETE',
@@ -118,20 +136,29 @@ export default function VocabularyManager() {
         },
       });
 
-      if (!response.ok) throw new Error('Failed to delete word');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || 'Failed to delete word');
+      }
 
       message.success('Xóa từ thành công');
       loadVocabulary();
     } catch (error) {
-      message.error('Xóa từ thất bại');
+      console.error('Lỗi xóa từ:', error);
+      message.error(error instanceof Error ? error.message : 'Xóa từ thất bại');
     }
   };
 
   const handleSaveWord = async (values: VocabularyFormValues) => {
+    if (!token) {
+      message.error('Bạn cần đăng nhập để lưu từ');
+      return;
+    }
+
     try {
       const method = editingWord ? 'PUT' : 'POST';
       const url = editingWord
-        ? `http://localhost:5000/api/vocabulary/${editingWord._id}`
+        ? `http://localhost:5000/api/vocabulary/${editingWord.id}`
         : 'http://localhost:5000/api/vocabulary';
 
       const response = await fetch(url, {
@@ -143,14 +170,99 @@ export default function VocabularyManager() {
         body: JSON.stringify(values),
       });
 
-      if (!response.ok) throw new Error('Failed to save word');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || 'Failed to save word');
+      }
 
       message.success(`${editingWord ? 'Cập nhật từ thành công' : 'Thêm từ thành công'}`);
       setIsModalVisible(false);
       loadVocabulary();
     } catch (error) {
-      message.error('Lưu từ thất bại');
+      console.error('Lỗi lưu từ:', error);
+      message.error(error instanceof Error ? error.message : 'Lưu từ thất bại');
     }
+  };
+
+  const canModify = (word: VocabularyWord) => {
+    if (!user) return false;
+    return user.id === word.createdBy?.id || user.id === word.createdBy?._id;
+  };
+
+  const fetchUserSets = async () => {
+    if (!user?.id) return;
+    try {
+      const response = await getSetsByUser(user.id);
+      const sets = response.data?.sets || response.data || [];
+      setAvailableSets(Array.isArray(sets) ? sets : []);
+    } catch (error) {
+      console.error('Lỗi tải danh sách set:', error);
+      message.error('Không thể tải bộ học của bạn');
+    }
+  };
+
+  const handleAddToSetClick = async (word: VocabularyWord) => {
+    if (!user?.id) {
+      message.error('Bạn cần đăng nhập để thêm vào bộ học');
+      return;
+    }
+    setAddingWord(word);
+    setSelectedSetId(null);
+    setAddToSetModalVisible(true);
+    await fetchUserSets();
+  };
+
+  const handleConfirmAddToSet = async () => {
+    if (!selectedSetId || !addingWord) {
+      message.error('Vui lòng chọn bộ học');
+      return;
+    }
+
+    setSetActionLoading(true);
+    try {
+      const response = await getSetById(selectedSetId);
+      const setData = response.data?.set || response.data;
+      const existingCards = Array.isArray(setData.cards) ? setData.cards : [];
+      const newCard = {
+        front: addingWord.word,
+        back: addingWord.definitions?.[0]?.meaning || '',
+        phonetic: addingWord.phonetic || undefined,
+        example: addingWord.definitions?.[0]?.example || undefined,
+        audioUrl: addingWord.audioUrl || undefined,
+      };
+
+      await updateSet(selectedSetId, { cards: [...existingCards, newCard] });
+      message.success(`Đã thêm "${addingWord.word}" vào bộ học`);
+      setAddToSetModalVisible(false);
+      setAddingWord(null);
+      setSelectedSetId(null);
+    } catch (error) {
+      console.error('Lỗi thêm từ vào bộ học:', error);
+      message.error('Không thể thêm từ vào bộ học');
+    } finally {
+      setSetActionLoading(false);
+    }
+  };
+
+  const handlePlayAudio = (word: VocabularyWord) => {
+    if (word.audioUrl) {
+      const audio = new Audio(word.audioUrl);
+      audio.play().catch((error) => {
+        console.error('Audio playback failed:', error);
+        message.error('Không thể phát âm thanh từ file');
+      });
+      return;
+    }
+
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(word.word);
+      utterance.lang = 'en-US';
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+      return;
+    }
+
+    message.error('Trình duyệt không hỗ trợ phát âm thanh');
   };
 
   const handleExportVocabulary = async () => {
@@ -277,20 +389,34 @@ export default function VocabularyManager() {
           <div style={{ display: 'grid', gap: '1rem' }}>
             {vocabulary.map((word) => (
               <Card
-                key={word._id}
+                key={word.id}
                 size="small"
                 actions={[
                   <Button
-                    key="edit"
-                    icon={<EditOutlined />}
-                    onClick={() => handleEditWord(word)}
+                    key="audio"
+                    icon={<SoundOutlined />}
+                    onClick={() => handlePlayAudio(word)}
                   />,
                   <Button
-                    key="delete"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => handleDeleteWord(word._id)}
+                    key="addToSet"
+                    icon={<PlusOutlined />}
+                    onClick={() => handleAddToSetClick(word)}
                   />,
+                  ...(canModify(word)
+                    ? [
+                        <Button
+                          key="edit"
+                          icon={<EditOutlined />}
+                          onClick={() => handleEditWord(word)}
+                        />,
+                        <Button
+                          key="delete"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => handleDeleteWord(word.id)}
+                        />,
+                      ]
+                    : []),
                 ]}
               >
                 <Card.Meta
@@ -324,6 +450,38 @@ export default function VocabularyManager() {
           </div>
         )}
       </Card>
+
+      <Modal
+        title={addingWord ? `Add "${addingWord.word}" to set` : 'Add word to set'}
+        open={addToSetModalVisible}
+        onCancel={() => {
+          setAddToSetModalVisible(false);
+          setAddingWord(null);
+          setSelectedSetId(null);
+        }}
+        onOk={handleConfirmAddToSet}
+        confirmLoading={setActionLoading}
+      >
+        <Form layout="vertical">
+          <Form.Item label="Select a set" required>
+            <Select
+              placeholder="Choose one of your sets"
+              value={selectedSetId || undefined}
+              onChange={(value) => setSelectedSetId(value)}
+              allowClear
+            >
+              {availableSets.map((set) => (
+                <Option key={set.id} value={set.id}>
+                  {set.title}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          {availableSets.length === 0 && (
+            <div>Chưa có bộ học nào. Vui lòng tạo bộ học trước.</div>
+          )}
+        </Form>
+      </Modal>
 
       {/* Modal Thêm/Sửa */}
       <Modal

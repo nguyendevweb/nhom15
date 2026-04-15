@@ -6,7 +6,7 @@ import { Input, Button, Form, Card, Space, Select, Switch, message } from "antd"
 import Header from "@/components/Header/Header";
 import Footer from "@/components/Footer/Footer";
 import { PlusOutlined, SaveOutlined } from "@ant-design/icons";
-import api from "@/services/api";
+import { createSet } from "@/services/setService";
 import { useAuth } from "@/hooks/AuthContext";
 
 const { TextArea } = Input;
@@ -66,7 +66,7 @@ export default function Create() {
       }
 
       setSaving(true);
-      const res = await api.post("/set", {
+      const res = await createSet({
         title: title.trim(),
         description: description.trim(),
         tags,
@@ -76,13 +76,17 @@ export default function Create() {
         cards: normalizedCards,
       });
 
-      const newSetId = res.data?.set?.id || res.data?.set?._id;
-      message.success("Tạo bộ thẻ thành công");
-      if (newSetId) {
-        router.push(`/set/${newSetId}`);
-      } else {
-        router.push("/");
+      const createdSet = res.data?.set ?? res.data;
+      const newSetId = createdSet?.id || createdSet?._id;
+      if (typeof window !== "undefined" && createdSet && newSetId) {
+        localStorage.setItem(
+          "lastCreatedSet",
+          JSON.stringify({ ...createdSet, _id: newSetId })
+        );
       }
+
+      message.success("Tạo bộ thẻ thành công");
+      router.push("/");
     } catch (error) {
       console.error("Không lưu được bộ thẻ", error);
       message.error("Tạo bộ thẻ thất bại. Vui lòng đăng nhập và thử lại.");
@@ -139,7 +143,7 @@ export default function Create() {
             <Option value="flashcard">Flashcard</Option>
             <Option value="spaced_repetition">Spaced Repetition</Option>
             <Option value="context_learning">Context Learning</Option>
-            <Option value="mixed">Mixed</Option>
+            <Option value="mixed">Mixed (Flashcard + Spaced Repetition + Context Learning)</Option>
           </Select>
         </Form.Item>
 

@@ -38,3 +38,8 @@
   font-size: 13px;
   color: #888;
 }
+
+.actions {
+  display: flex;
+  gap: 8px;
+}

@@ -45,7 +45,7 @@ export default function SetDetailPage() {
         title: rawSet?.title ?? "",
         description: rawSet?.description ?? "",
         cards: Array.isArray(rawSet?.cards) ? rawSet.cards : [],
-        userId: rawSet?.userId ?? rawSet?.owner?._id ?? "",
+        userId: rawSet?.userId ?? rawSet?.owner?._id ?? rawSet?.owner?.id ?? "",
         userName: rawSet?.userName ?? rawSet?.owner?.name ?? "Unknown",
         tags: Array.isArray(rawSet?.tags) ? rawSet.tags : [],
         category: rawSet?.category,
@@ -68,68 +68,95 @@ export default function SetDetailPage() {
 
   const isOwner = user?.id === setData.userId
 
+  const studyLabel = setData.studyMode === 'spaced_repetition'
+    ? 'Start Spaced Repetition'
+    : setData.studyMode === 'context_learning'
+    ? 'Start Context Learning'
+    : setData.studyMode === 'mixed'
+    ? 'Choose a study mode below'
+    : 'Start Flashcard'
+
+  const studyUrl = setData.studyMode === 'spaced_repetition'
+    ? `/study/spaced-repetition?setId=${id}`
+    : setData.studyMode === 'context_learning'
+    ? `/study/context?setId=${id}`
+    : setData.studyMode === 'flashcard'
+    ? `/set/${id}/study`
+    : ''
+
   return (
     <>
       <Header />
       <div className="container mx-auto px-4 py-8">
-      <Card style={{ marginBottom: '2rem' }}>
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold">{setData.title}</h1>
-          {setData.description && <p className="text-gray-600 mt-2">{setData.description}</p>}
-          <div className="flex flex-wrap gap-2 mt-3">
-            <p className="text-sm text-gray-500">Created by {setData.userName}</p>
-            <p className="text-sm text-gray-500">{setData.cards.length} cards</p>
-            {setData.category && <p className="text-sm text-gray-500">Category: {setData.category}</p>}
-            {setData.studyMode && <p className="text-sm text-gray-500">Mode: {setData.studyMode}</p>}
-          </div>
-          {setData.tags && setData.tags.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {setData.tags.map((tag) => (
-                <span key={tag} className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-800">
-                  {tag}
-                </span>
-              ))}
+        <Card style={{ marginBottom: '2rem' }}>
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold">{setData.title}</h1>
+            {setData.description && <p className="text-gray-600 mt-2">{setData.description}</p>}
+            <div className="flex flex-wrap gap-2 mt-3">
+              <p className="text-sm text-gray-500">Created by {setData.userName}</p>
+              <p className="text-sm text-gray-500">{setData.cards.length} cards</p>
+              {setData.category && <p className="text-sm text-gray-500">Category: {setData.category}</p>}
+              {setData.studyMode && <p className="text-sm text-gray-500">Mode: {setData.studyMode}</p>}
             </div>
-          )}
-        </div>
+            {setData.studyMode === 'mixed' && (
+              <p className="text-sm text-blue-600 mt-2">
+                Mixed mode includes Flashcard, Spaced Repetition and Context Learning. Choose one of them below.
+              </p>
+            )}
+            {setData.tags && setData.tags.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {setData.tags.map((tag) => (
+                  <span key={tag} className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-800">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
 
-        <div className="mb-4 flex gap-2">
-          <Button
-            type="primary"
-            onClick={() => router.push(`/set/${id}/study`)}
-            disabled={setData.cards.length === 0}
-          >
-            Start Flashcard
-          </Button>
-          {isOwner && (
-            <Button onClick={() => router.push(`/set/${id}/edit`)}>
-              Edit Set
+          <div className="mb-4 flex gap-2 flex-wrap">
+            <Button
+              type="primary"
+              onClick={() => studyUrl && router.push(studyUrl)}
+              disabled={setData.cards.length === 0 || setData.studyMode === 'mixed'}
+            >
+              {studyLabel}
             </Button>
-          )}
-        </div>
-      </Card>
+            {setData.studyMode === 'mixed' && (
+              <span className="text-sm text-gray-500 self-center">
+                Mixed mode includes Flashcard, Spaced Repetition and Context Learning. Please choose one of them below.
+              </span>
+            )}
+            {isOwner && (
+              <Button onClick={() => router.push(`/set/${id}/edit`)}>
+                Edit Set
+              </Button>
+            )}
+          </div>
+        </Card>
 
-      <StudyModes setId={id as string} />
+        <StudyModes setId={id as string} />
 
-      <Card title="Cards Preview" style={{ marginTop: '2rem' }}>
-        <List
-          dataSource={setData.cards}
-          renderItem={(card) => (
-            <List.Item>
-              <Card size="small" className="w-full">
-                <div className="flex justify-between">
-                  <div>
-                    <strong>Front:</strong> {card.front}
+        <Card title="Cards Preview" style={{ marginTop: '2rem' }}>
+          <List
+            dataSource={setData.cards}
+            renderItem={(card) => (
+              <List.Item>
+                <Card size="small" className="w-full">
+                  <div className="flex justify-between">
+                    <div>
+                      <strong>Front:</strong> {card.front}
+                    </div>
+                    <div>
+                      <strong>Back:</strong> {card.back}
+                    </div>
                   </div>
-                  <div>
-                    <strong>Back:</strong> {card.back}
-                  </div>
-                </div>
-              </Card>
-            </List.Item>
-          )}
-        />
-      </Card>
-    </div>
+                </Card>
+              </List.Item>
+            )}
+          />
+        </Card>
+      </div>
+    </>
   )
 }

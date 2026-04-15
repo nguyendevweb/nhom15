@@ -14,16 +14,25 @@ const api = axios.create({
  * Lấy token từ localStorage và gắn vào "Bearer <token>"
  */
 api.interceptors.request.use((config) => {
-  if (!config.headers?.Authorization) {
-    // Lấy token từ localStorage (chỉ trên client-side)
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    if (token) {
-      config.headers = config.headers ?? {};
-      config.headers.Authorization = `Bearer ${token}`;
-      console.log("[API] 🔓 Thêm JWT token vào header Authorization");
-    }
+  config.headers = config.headers ?? {};
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  if (token) {
+    config.headers["Authorization"] = `Bearer ${token}`;
+    console.log("[API] 🔓 Thêm JWT token vào header Authorization");
+  } else {
+    console.warn("[API] ⚠️ Không tìm thấy token trong localStorage");
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      console.error("[API] ❌ API returned 401 Unauthorized", error.response?.data?.message || error.message);
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;

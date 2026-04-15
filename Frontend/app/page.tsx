@@ -4,10 +4,11 @@ import Header from "@/components/Header/Header";
 import Footer from "@/components/Footer/Footer";
 import StudyModes from "@/components/StudyModes/StudyModes";
 import { useEffect, useState } from "react";
-import { getAllSets } from "@/services/setService";
+import { getAllSets, getSetsByUser } from "@/services/setService";
 import SetCard from "../components/SetCard/SetCard";
 import { useAuth } from "@/hooks/AuthContext";
 import { Button, Row, Col, Alert } from "antd";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 interface Set {
@@ -27,9 +28,42 @@ export default function Home() {
 
   const fetchData = async () => {
     try {
-      const res = await getAllSets();
-      const data = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-      setSets(data);
+      const userId = user?.id || (user as any)?._id;
+      const res = userId ? await getSetsByUser(userId) : await getAllSets();
+      const data = Array.isArray(res.data)
+        ? res.data
+        : res.data?.sets ?? res.data?.data ?? [];
+      const normalizedSets = Array.isArray(data)
+        ? data.map((item: any) => ({
+            ...item,
+            _id: item._id ?? item.id,
+            userId: item.userId ?? item.owner?._id ?? item.owner?.id ?? "",
+            userName: item.userName ?? item.owner?.name ?? "Anonymous",
+          }))
+        : [];
+      let updatedSets = normalizedSets as Set[];
+
+      if (typeof window !== "undefined") {
+        const storedSet = localStorage.getItem("lastCreatedSet");
+        if (storedSet) {
+          try {
+            const parsed = JSON.parse(storedSet);
+            const parsedId = parsed._id ?? parsed.id;
+            if (
+              parsedId &&
+              !updatedSets.some((s) => s._id === parsedId || (s as any).id === parsedId)
+            ) {
+              updatedSets = [{ ...parsed, _id: parsedId } as Set, ...updatedSets];
+            }
+            localStorage.removeItem("lastCreatedSet");
+          } catch (parseError) {
+            console.warn("Không thể đọc lastCreatedSet từ localStorage", parseError);
+            localStorage.removeItem("lastCreatedSet");
+          }
+        }
+      }
+
+      setSets(updatedSets);
     } catch (error) {
       console.error("Không tải được bộ thẻ:", error);
       setSets([]);
@@ -59,7 +93,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     fetchDueCards();
@@ -77,7 +111,12 @@ export default function Home() {
           {user && dueCount > 0 && (
             <div className="mt-4">
               <Alert
-                message={`You have ${dueCount} words due for review today`}
+                title={`You have ${dueCount} words due for review today`}
+                description={
+                  <span>
+                    <Link href="/demo-study">Bấm vào đây để học ngay</Link>
+                  </span>
+                }
                 type="info"
                 showIcon
                 closable
